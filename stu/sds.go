@@ -11,10 +11,12 @@ type Sds struct {
 	free   int
 }
 
+const show_LENGTH = 30
+
 //print sds
 func (self *Sds) String() string {
-	m := 20
-	if self.length < 20 {
+	m := show_LENGTH
+	if self.length < show_LENGTH {
 		m = self.length
 	}
 	return fmt.Sprintf("{\n\tlen:%d\n\tfree:%d\n\tcontent:%s\n}\n",
@@ -29,8 +31,12 @@ func NewSds(b []byte) *Sds {
 	return &Sds{
 		buf:    nb,
 		length: l,
-		free:   l,
+		free:   0,
 	}
+}
+
+func NewSdsString(s string) *Sds {
+	return NewSds([]byte(s))
 }
 
 const default_EMPTY_LEN = 20
@@ -71,20 +77,28 @@ func (self *Sds) Clear() {
 }
 
 //concat []byte to tail of sds
-func (self *Sds) Cat(tail []byte) {
+func (self *Sds) Cat(tail []byte) error {
 	//if < 1M after
-}
-
-//if < 1M after grow, grow to 2 * len, otherwise grow 1M
-func (self *Sds) Grow() error {
-	size := self.length
-	if size*2 > (10 ^ 6) {
-		size = 10 ^ 6
+	err := self.growTo(self.Len() + len(tail))
+	if err != nil {
+		return err
 	}
-	return self.grow(size)
+	copy(self.buf[self.Len():], tail)
+	self.length = self.length + len(tail)
+	return nil
 }
-func (self *Sds) GrowTo(l int) {
 
+const grow_BOUND = 1024 * 1024
+
+func (self *Sds) growTo(l int) error {
+	if l > MAX_LENGTH {
+		return ErrLengthTooBig
+	}
+	var realLen = 2 * l
+	if 2*l >= grow_BOUND {
+		realLen = l + 1024*1024
+	}
+	return self.grow(realLen - self.length)
 }
 
 const MAX_LENGTH = 512 * 1024 * 1024
@@ -110,28 +124,52 @@ func (self *Sds) Range(start, end int) error {
 	if start < 0 || end > self.length {
 		return ErrOutofRange
 	}
-	nb := self.buf[start:end]
-	copy(self.buf, nb)
+	self.buf = self.buf[start:end]
+	self.free = self.free + (self.length - end + start)
 	self.length = end - start
 	return nil
 }
 
 //trim delim from begin and end
-func (self *Sds) Trim(delim []byte) {
-	//	head := true
-	//	tail := true
-	//	for i, v := range delim {
-	//		head = (v == self.buf[i])
-	//		//tail = (v == )
-	//	}
+func (self *Sds) Trim(delim []byte) error {
+	lenDe := len(delim)
+	if lenDe > self.Len() {
+		return nil
+	}
+	head := 0
+	tail := self.length
+	//find head
+	trimHead := true
+	for i := 0; i < lenDe; i++ {
+		if delim[i] != self.buf[i] {
+			trimHead = false
+			break
+		}
+	}
+	if trimHead {
+		head = lenDe
+	}
+	if self.Len()-lenDe >= head {
+		trimTail := true
+		for i := lenDe - 1; i >= 0; i-- {
+			if self.buf[self.Len()-lenDe+i] != delim[i] {
+				trimTail = false
+				break
+			}
+		}
+		if trimTail {
+			tail = self.Len() - lenDe
+		}
+	}
+	return self.Range(head, tail)
 }
 
 //determine two sds equal or not
 func (self *Sds) Compare(other *Sds) bool {
-	l := self.Len()
-	if self.Len() > other.Len() {
-		l = other.Len()
+	if self.Len() != other.Len() {
+		return false
 	}
+	l := other.Len()
 	for i := 0; i < l; i++ {
 		if self.buf[i] != other.buf[i] {
 			return false
@@ -139,3 +177,5 @@ func (self *Sds) Compare(other *Sds) bool {
 	}
 	return true
 }
+
+//
