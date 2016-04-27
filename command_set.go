@@ -1,5 +1,8 @@
 package main
 
 type setCommand struct {
-    key string
+}
+
+func (sc *setCommand) exec(c *client) (string, error) {
+    return "", nil
 }
