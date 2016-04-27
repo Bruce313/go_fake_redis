@@ -46,6 +46,7 @@ func loopProcessCommand(c *net.TCPConn) {
 	stdin := os.Stdin
 	//read line
 	scanner := bufio.NewScanner(stdin)
+	fmt.Printf(">")
 	for scanner.Scan() {
 		command := scanner.Text()
 		//encode
@@ -63,7 +64,8 @@ func loopProcessCommand(c *net.TCPConn) {
 			log.Fatalf("read string from conn:%s", err)
 		}
 		//display
-		fmt.Printf("get reply:%s for command:%s\n", line, command)
+		fmt.Printf("%s\n", line)
+		fmt.Printf(">")
 	}
 }
 

@@ -1,19 +1,18 @@
 package main
 
 import (
-	"errors"
 	"fmt"
-	. "github.com/tj/go-debug"
+	d "github.com/tj/go-debug"
 	"math"
 	"net"
 	"syscall"
 	"time"
 )
 
-var debugNet = Debug("go_redis:network")
+var debugNet = d.Debug("go_redis:network")
 
 const maxPOLLEVENTS = 10
-const listenBACK_LOG = 10
+const listenBACKLOG = 10
 
 type fileEventType int
 
@@ -49,7 +48,7 @@ func newNetworkListener(ip string, port int) (nl *networkListener, err error) {
 		return
 	}
 	//
-	err = syscall.Listen(sockFd, listenBACK_LOG)
+	err = syscall.Listen(sockFd, listenBACKLOG)
 	if err != nil {
 		return
 	}
@@ -72,15 +71,15 @@ func newNetworkListener(ip string, port int) (nl *networkListener, err error) {
 	return
 }
 
-func (self *networkListener) scan(t time.Duration) (firedFd []*fileEvent, err error) {
+func (nl *networkListener) scan(t time.Duration) (firedFd []*fileEvent, err error) {
 	firedFd = make([]*fileEvent, 0)
 	msec := int(float64(t) / (math.Pow(float64(10), float64(6))))
 	var events [maxPOLLEVENTS]syscall.EpollEvent
 	debugNet("begin epoll_wait\n")
-	count, err := syscall.EpollWait(self.epFd, events[:], msec)
+	count, err := syscall.EpollWait(nl.epFd, events[:], msec)
 	debugNet("get count:%d for this epoll_wait", count)
 	if err != nil {
-		return nil, errors.New(fmt.Sprintf("epoll wait:%s, epFd:%d\n", err.Error(), self.epFd))
+		return nil, fmt.Errorf("epoll wait:%s, epFd:%d\n", err.Error(), nl.epFd)
 	}
 	debugNet("get count:%d for this epoll_wait", count)
 	if count == 0 {
@@ -88,13 +87,13 @@ func (self *networkListener) scan(t time.Duration) (firedFd []*fileEvent, err er
 		return
 	}
 	for _, e := range events[:count] {
-		debugNet("get epollEvent.events:%x, fd:%d, sockFd:%d", e.Events, e.Fd, self.sockFd)
+		debugNet("get epollEvent.events:%x, fd:%d, sockFd:%d", e.Events, e.Fd, nl.sockFd)
 		var fe fileEvent
-		if int(e.Fd) == self.sockFd {
+		if int(e.Fd) == nl.sockFd {
 			//accept new conn
-			nfd, _, errAcc := syscall.Accept(self.sockFd)
+			nfd, _, errAcc := syscall.Accept(nl.sockFd)
 			if errAcc != nil {
-				return nil, errors.New(fmt.Sprintf("accept:%s, epFd:%d", errAcc.Error(), self.sockFd))
+				return nil, fmt.Errorf("accept:%s, epFd:%d", errAcc.Error(), nl.sockFd)
 			}
 			fe.eType = fileEventTypeNew
 			fe.fd = nfd
@@ -103,7 +102,7 @@ func (self *networkListener) scan(t time.Duration) (firedFd []*fileEvent, err er
 				Fd:     int32(nfd),
 				Events: syscall.EPOLLIN,
 			}
-			errEctl := syscall.EpollCtl(self.epFd, syscall.EPOLL_CTL_ADD, nfd, ee)
+			errEctl := syscall.EpollCtl(nl.epFd, syscall.EPOLL_CTL_ADD, nfd, ee)
 			if errEctl != nil {
 				return nil, errEctl
 			}
@@ -115,7 +114,17 @@ func (self *networkListener) scan(t time.Duration) (firedFd []*fileEvent, err er
 	}
 	return
 }
-func (self *networkListener) destroy() {
-	syscall.Close(self.sockFd)
-	syscall.Close(self.epFd)
+//rm fd when conn close
+func (nl *networkListener) rmFd(fd int) {
+	ee := &syscall.EpollEvent{
+		Fd: int32(fd),
+		Events: syscall.EPOLLIN,
+	}
+	//ignore errors 
+	syscall.EpollCtl(nl.epFd, syscall.EPOLL_CTL_DEL, fd, ee)
+	return
+}
+func (nl *networkListener) destroy() {
+	syscall.Close(nl.sockFd)
+	syscall.Close(nl.epFd)
 }
