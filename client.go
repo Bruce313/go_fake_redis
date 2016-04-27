@@ -4,7 +4,7 @@ import ()
 
 type client struct {
 	fd int
-	db db
+	db *db
 }
 
 func (c *client) destroy() {

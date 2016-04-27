@@ -16,10 +16,11 @@ func main() {
 		log.Fatal("new net worker listener:", err)
 	}
 	pp := newProtocolPlain()
-	sc := newScheduler(nwl, pp)
+	dbm := newDBManager()
+	sc := newScheduler(nwl, pp, dbm)
 	go sc.loop()
 	//wait ctrl + C
-	chSig := make(chan os.Signal, 1)
+	chSig := make(chan os.Signal)
 	signal.Notify((chan<-os.Signal)(chSig), syscall.SIGINT)
 	<- chSig
 	deMain("read signal SIGINT, quiting")

@@ -2,19 +2,21 @@ package main
 
 import (
 	"bufio"
+	"strings"
 	"flag"
 	"fmt"
-	. "github.com/tj/go-debug"
+	d "github.com/tj/go-debug"
 	"io"
 	"log"
 	"net"
 	"os"
 )
 
-var debug = Debug("go_redis:cli")
+var debug = d.Debug("go_redis:cli")
 
 const (
-	DELIM = byte('\n')
+	dELIM = byte('\n')
+	quitCMD = "exit"
 )
 
 func main() {
@@ -30,11 +32,11 @@ func main() {
 	}
 	conn, err := net.DialTCP("tcp", nil, raddr)
 	if err != nil {
-		log.Fatalf("dial for ip:%s, port:%d fail: %s", host, port, err)
+		log.Fatalf("dial for ip:%s, port:%d fail: %s", *host, port, err)
 	}
 	defer conn.Close()
 	br := bufio.NewReader(conn)
-	line, err := br.ReadString(DELIM)
+	line, err := br.ReadString(dELIM)
 	if err != nil {
 		log.Fatalf("read string from conn:%s", err)
 	}
@@ -49,6 +51,9 @@ func loopProcessCommand(c *net.TCPConn) {
 	fmt.Printf(">")
 	for scanner.Scan() {
 		command := scanner.Text()
+		if strings.TrimSpace(command) == quitCMD {
+			os.Exit(0)
+		}
 		//encode
 		en := []byte(encode(command))
 		debug("send command:%s", string(en))
@@ -81,7 +86,7 @@ func readLine(r io.Reader) (string, error) {
 			return "", err
 		}
 		debug("read stdin char:%s", string(buf[:]))
-		if buf[0] == DELIM {
+		if buf[0] == dELIM {
 			return line, nil
 		}
 		line = line + string(buf[:])

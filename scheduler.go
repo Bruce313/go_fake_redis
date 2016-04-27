@@ -17,13 +17,15 @@ type scheduler struct {
 	nwl       *networkListener
 	fd2Client map[int]*client
 	pcl       protocol
+	dbm *dbManager
 }
 
-func newScheduler(nwl *networkListener, pcl protocol) *scheduler {
+func newScheduler(nwl *networkListener, pcl protocol, dbm *dbManager) *scheduler {
 	return &scheduler{
 		nwl:       nwl,
 		fd2Client: make(map[int]*client, 0),
 		pcl:       pcl,
+		dbm: dbm,
 	}
 }
 
@@ -68,6 +70,7 @@ func (shd *scheduler) handleFileEvent(fe *fileEvent) (err error) {
 		desch("new client")
 		nc := client{
 			fd: fe.fd,
+			db: shd.dbm.getDefaultDB(),
 		}
 		shd.fd2Client[fe.fd] = &nc
 		connInfo := `connected`
